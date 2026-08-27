@@ -435,6 +435,34 @@
   </section>
 
   <!-- PROFILE -->
+  <section id="orders-screen" class="screen">
+    <div class="head">
+      <div>
+        <h1 class="title">Pedidos</h1>
+        <div class="date">O que os clientes compraram.</div>
+      </div>
+      <button class="icon-btn" onclick="app.go('profile')">✕</button>
+    </div>
+    <div class="switcher">
+      <button id="ow-mes" class="on" onclick="app.setOrdView('mes')">Este mês</button>
+      <button id="ow-tudo" onclick="app.setOrdView('tudo')">Todos</button>
+    </div>
+    <div id="ord-summary"></div>
+    <div class="section-label">Lista de pedidos</div>
+    <div id="order-list"></div>
+  </section>
+
+  <section id="brands-screen" class="screen">
+    <div class="head">
+      <div>
+        <h1 class="title">Marcas</h1>
+        <div class="date">As representações que você atende.</div>
+      </div>
+      <button class="icon-btn" onclick="app.go('profile')">✕</button>
+    </div>
+    <div id="brand-list"></div>
+  </section>
+
   <section id="clients-screen" class="screen">
     <div class="head">
       <div>
@@ -484,6 +512,7 @@ const $ = s => document.querySelector(s);
 const pad = n => String(n).padStart(2,"0");
 const money = n => "R$ " + Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const moneyShort = n => "R$ " + Number(n||0).toLocaleString("pt-BR",{maximumFractionDigits:0});
+const ORDER_STATUS = ["Pedido realizado","Em produção","Faturado","Entregue","Cancelado"];
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const DOW = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 const keyOf = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
@@ -565,8 +594,8 @@ const PILLARS = [
 ];
 
 const app = {
-  data:{ tasks:[], tx:[], events:[], clients:[], focus:null, focusDate:null, quiz:null, quizAnswers:{}, fontScale:1 },
-  calView:"mes", finView:"mes",
+  data:{ tasks:[], tx:[], events:[], clients:[], brands:[], orders:[], focus:null, focusDate:null, quiz:null, quizAnswers:{}, fontScale:1 },
+  calView:"mes", finView:"mes", ordView:"mes",
   cursor:new Date(),
   selected:keyOf(new Date()),
 
@@ -574,6 +603,14 @@ const app = {
     try{ const d=JSON.parse(localStorage.getItem("meufoco_v4")||"{}"); Object.assign(this.data,d); }catch(e){}
     if(!Array.isArray(this.data.events)) this.data.events=[];
     if(!Array.isArray(this.data.clients)) this.data.clients=[];
+    if(!Array.isArray(this.data.orders)) this.data.orders=[];
+    if(!Array.isArray(this.data.brands)||!this.data.brands.length){
+      this.data.brands=[
+        {id:uid(),name:"Jorge Bischoff",pct:null,active:true},
+        {id:uid(),name:"Maithê",pct:null,active:true},
+        {id:uid(),name:"Neftali",pct:null,active:true}
+      ];
+    }
     const t=keyOf(new Date());
     if(this.data.focusDate!==t){ this.data.focus=null; this.data.focusDate=t; }
     document.documentElement.style.setProperty("--fs",this.data.fontScale||1);
@@ -595,6 +632,8 @@ const app = {
     $("#fab").style.display = tab==="profile"?"none":"flex";
     if(tab==="profile") this.renderProfile();
     if(tab==="clients") this.renderClients();
+    if(tab==="orders") this.renderOrders();
+    if(tab==="brands") this.renderBrands2();
     if(tab==="agenda") this.renderCalendar();
     this.render();
     document.querySelector(".screen.active").scrollTop=0;
@@ -770,7 +809,7 @@ const app = {
       <div class="field"><label>Local (opcional)</label>
         <input id="ev-place" placeholder="Ex: Centro, Bauru" value="${e?this.esc(e.place||''):(pre?this.esc(pre.city||''):'')}"></div>
       <div class="field"><label>Observações (opcional)</label>
-        <textarea id="ev-notes" rows="3" placeholder="Ex: levar mostruário Jorge Bischof">${e?this.esc(e.notes||''):''}</textarea></div>
+        <textarea id="ev-notes" rows="3" placeholder="Ex: levar mostruário Jorge Bischoff">${e?this.esc(e.notes||''):''}</textarea></div>
       <button class="primary-btn" onclick="app.saveEvent()">${e?"Salvar":"Marcar compromisso"}</button>
       <button class="ghost-btn" onclick="app.eventToCalendar()">🔔 Criar alerta no Calendário do iPhone</button>
       ${e?'<button class="ghost-btn" onclick="app.deleteEvent(\''+e.id+'\')">Excluir compromisso</button>':''}`);
@@ -892,6 +931,8 @@ const app = {
     const s=document.querySelector(".screen.active").id;
     if(s==="money-screen") this.openTxSheet();
     else if(s==="clients-screen") this.openClientSheet();
+    else if(s==="orders-screen") this.openOrderSheet();
+    else if(s==="brands-screen") this.openBrandSheet();
     else if(s==="agenda-screen") this.openEventSheet();
     else if(s==="home-screen") this.chooseAdd();
     else this.openTaskSheet();
@@ -1161,7 +1202,7 @@ const app = {
       <div class="field"><label>Descrição</label><input id="tx-name" placeholder="Ex: comissão, combustível"></div>
       <div class="field"><label>Categoria</label><input id="tx-cat" placeholder="Ex: trabalho, alimentação, carro"></div>
       <div class="field" id="brand-field"><label>Marca (para comissões)</label>
-        <input id="tx-brand" placeholder="Ex: Jorge Bischof" list="brand-list">
+        <input id="tx-brand" placeholder="Ex: Jorge Bischoff" list="brand-list">
         ${this.brandDatalist()}</div>
       <div class="field"><label>Dia</label><input type="date" id="tx-date" value="${keyOf(new Date())}"></div>
       <button class="primary-btn" onclick="app.saveTx()">Registrar</button>`);
@@ -1242,7 +1283,7 @@ const app = {
   },
   confirmImport(){
     const d=this._pendingImport; if(!d)return;
-    this.data=Object.assign({tasks:[],tx:[],events:[],clients:[],focus:null,focusDate:null,quiz:null,quizAnswers:{},fontScale:1},d);
+    this.data=Object.assign({tasks:[],tx:[],events:[],clients:[],brands:[],orders:[],focus:null,focusDate:null,quiz:null,quizAnswers:{},fontScale:1},d);
     this._pendingImport=null;
     document.documentElement.style.setProperty("--fs",this.data.fontScale||1);
     this.save(); this.closeSheet(); this.go("home"); this.toast("Dados restaurados.");
@@ -1251,6 +1292,216 @@ const app = {
     this.data.fontScale=v;
     document.documentElement.style.setProperty("--fs",v);
     this.save(); this.openSettings();
+  },
+
+  /* ================= MARCAS ================= */
+  renderBrands2(){
+    const box=$("#brand-list"); if(!box)return;
+    if(!this.data.brands.length){
+      box.innerHTML='<div class="empty-note">Nenhuma marca cadastrada.<br>Toque no + para adicionar.</div>';
+      return;
+    }
+    const ativas=this.data.brands.filter(b=>b.active);
+    const inativas=this.data.brands.filter(b=>!b.active);
+    const linha=b=>{
+      const ped=this.data.orders.filter(o=>o.brandId===b.id);
+      const pares=ped.reduce((x,o)=>x+(o.pairs||0),0);
+      const valor=ped.reduce((x,o)=>x+(o.value||0),0);
+      return `<div class="task ${b.active?'':'done'}" onclick="app.openBrandSheet('${b.id}')">
+        <div class="task-body">
+          <div class="task-name">${this.esc(b.name)}</div>
+          <div class="task-meta">
+            <span class="pill g">${pares} par${pares===1?'':'es'}</span>
+            <span class="pill p">${moneyShort(valor)}</span>
+            ${b.pct?`<span class="pill a">${b.pct}% comissão</span>`:''}
+          </div>
+        </div><div class="action-arrow">›</div></div>`;
+    };
+    box.innerHTML = (ativas.length?ativas.map(linha).join(""):'<div class="empty-note">Nenhuma marca ativa.</div>')
+      + (inativas.length?'<div class="section-label">Não trabalho mais</div>'+inativas.map(linha).join(""):"");
+  },
+  openBrandSheet(id){
+    const b = id ? this.data.brands.find(x=>x.id===id) : null;
+    this._brId = id||null;
+    this._brActive = b ? b.active !== false : true;
+    this.openSheet(`<h2>${b?"Editar marca":"Nova marca"}</h2>
+      <div class="field"><label>Nome da marca</label>
+        <input id="b-name" placeholder="Ex: Jorge Bischoff" value="${b?this.esc(b.name):''}"></div>
+      <div class="field"><label>Comissão estimada (%)</label>
+        <input id="b-pct" type="number" inputmode="decimal" placeholder="Ex: 5" value="${b&&b.pct!=null?b.pct:''}">
+        <div class="hint">Serve só para estimar quanto você tem a receber. Cada marca paga de um jeito — quando quiser, me explique as regras de cada uma e eu faço o cálculo certo.</div></div>
+      <div class="field"><label>Situação</label>
+        <div class="seg" id="br-seg">
+          <button onclick="app.setBrandActive(true,this)" class="${this._brActive?'on':''}">Trabalho com ela</button>
+          <button onclick="app.setBrandActive(false,this)" class="${this._brActive?'':'on'}">Não trabalho mais</button>
+        </div></div>
+      <button class="primary-btn" onclick="app.saveBrand()">${b?"Salvar":"Cadastrar marca"}</button>
+      ${b?'<button class="ghost-btn" onclick="app.deleteBrand(\''+b.id+'\')">Excluir marca</button>':''}`);
+    if(!b) setTimeout(()=>{ const el=$("#b-name"); if(el) el.focus(); },300);
+  },
+  setBrandActive(v,btn){
+    this._brActive=v;
+    document.querySelectorAll("#br-seg button").forEach(x=>x.classList.remove("on"));
+    btn.classList.add("on");
+  },
+  saveBrand(){
+    const name=($("#b-name").value||"").trim();
+    if(!name){ this.toast("Escreva o nome da marca."); return; }
+    const pctRaw=($("#b-pct").value||"").replace(",",".");
+    const pct=pctRaw===""?null:parseFloat(pctRaw);
+    const obj={name,pct:(pct!=null&&!isNaN(pct))?pct:null,active:this._brActive};
+    if(this._brId){ Object.assign(this.data.brands.find(x=>x.id===this._brId),obj); }
+    else { this.data.brands.push({id:uid(),...obj}); }
+    this.closeSheet(); this.go("brands"); this.toast("Marca salva.");
+  },
+  deleteBrand(id){
+    const usada=this.data.orders.some(o=>o.brandId===id);
+    if(usada){
+      this.openSheet(`<h2>Não dá para excluir</h2>
+        <p class="sub">Esta marca tem pedidos registrados. Se excluir, você perde o histórico deles.</p>
+        <div class="hint" style="margin-top:0;margin-bottom:16px">Em vez disso, marque como "Não trabalho mais". Ela sai da lista principal, mas o histórico fica guardado.</div>
+        <button class="primary-btn" onclick="app.openBrandSheet('${id}')">Voltar e editar</button>
+        <button class="ghost-btn" onclick="app.closeSheet()">Fechar</button>`);
+      return;
+    }
+    this.data.brands=this.data.brands.filter(b=>b.id!==id);
+    this.closeSheet(); this.go("brands"); this.toast("Marca excluída.");
+  },
+
+  /* ================= PEDIDOS ================= */
+  setOrdView(v){
+    this.ordView=v;
+    const a=$("#ow-mes"), b=$("#ow-tudo");
+    if(a) a.classList.toggle("on",v==="mes");
+    if(b) b.classList.toggle("on",v==="tudo");
+    this.renderOrders();
+  },
+  ordersInView(){
+    if(this.ordView==="tudo") return [...this.data.orders];
+    const m=keyOf(new Date()).slice(0,7);
+    return this.data.orders.filter(o=>(o.date||"").slice(0,7)===m);
+  },
+  renderOrders(){
+    const list=this.ordersInView().sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id));
+    const sum=$("#ord-summary");
+    if(sum){
+      const pares=list.reduce((x,o)=>x+(o.pairs||0),0);
+      const valor=list.reduce((x,o)=>x+(o.value||0),0);
+      let com=0, temPct=false;
+      list.forEach(o=>{
+        const b=this.data.brands.find(x=>x.id===o.brandId);
+        if(b&&b.pct){ com+=(o.value||0)*b.pct/100; temPct=true; }
+      });
+      sum.innerHTML=`<div class="card bal">
+          <div class="bal-k">${this.ordView==="tudo"?"Total de pedidos":"Pedidos deste mês"}</div>
+          <div class="bal-v">${money(valor)}</div>
+          <div class="bal-split">
+            <div><div class="k">Pares</div><div class="v">${pares}</div></div>
+            <div><div class="k">Pedidos</div><div class="v">${list.length}</div></div>
+          </div>
+        </div>
+        ${temPct?`<div class="card" style="margin-top:12px">
+          <div class="action-desc" style="margin:0">Comissão estimada</div>
+          <div class="pilar-name" style="font-size:calc(24px * var(--fs));color:var(--brand);margin-top:4px">${money(com)}</div>
+          <div class="hint" style="margin-top:8px">Estimativa pelo percentual que você cadastrou em cada marca. Não é o valor final.</div>
+        </div>`:''}`;
+    }
+    const box=$("#order-list"); if(!box)return;
+    if(!list.length){
+      box.innerHTML=`<div class="empty-note">${this.ordView==="mes"?"Nenhum pedido neste mês.":"Nenhum pedido registrado."}<br>Toque no + para registrar um pedido.</div>`;
+      return;
+    }
+    box.innerHTML=list.map(o=>{
+      const c=this.data.clients.find(x=>x.id===o.clientId);
+      const b=this.data.brands.find(x=>x.id===o.brandId);
+      const p=(o.date||"").split("-");
+      const ent=o.delivery?(()=>{const d=o.delivery.split("-");return d[2]+"/"+d[1];})():null;
+      return `<div class="task" onclick="app.openOrderSheet('${o.id}')">
+        <div class="task-body">
+          <div class="task-name">${c?this.esc(c.name):"Sem cliente"}</div>
+          <div class="action-desc">${b?this.esc(b.name):"sem marca"} · ${p[2]}/${p[1]}</div>
+          <div class="task-meta">
+            <span class="pill g">${o.pairs||0} par${o.pairs===1?'':'es'}</span>
+            <span class="pill p">${moneyShort(o.value||0)}</span>
+            ${ent?`<span class="pill a">entrega ${ent}</span>`:''}
+            <span class="pill">${this.esc(o.status||ORDER_STATUS[0])}</span>
+          </div>
+        </div><div class="action-arrow">›</div></div>`;
+    }).join("");
+  },
+  openOrderSheet(id,preClientId){
+    const o = id ? this.data.orders.find(x=>x.id===id) : null;
+    this._ordId = id||null;
+    const cid = o?o.clientId:(preClientId||"");
+    const ativas=this.data.brands.filter(b=>b.active||(o&&o.brandId===b.id));
+    this.openSheet(`<h2>${o?"Editar pedido":"Novo pedido"}</h2>
+      <div class="field"><label>Cliente</label>
+        <select id="o-client">
+          <option value="">— escolha —</option>
+          ${[...this.data.clients].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>
+            `<option value="${c.id}" ${cid===c.id?'selected':''}>${this.esc(c.name)}</option>`).join("")}
+        </select></div>
+      <div class="field"><label>Marca</label>
+        <select id="o-brand">
+          <option value="">— escolha —</option>
+          ${ativas.map(b=>`<option value="${b.id}" ${o&&o.brandId===b.id?'selected':''}>${this.esc(b.name)}</option>`).join("")}
+        </select></div>
+      <div class="field-row">
+        <div class="field"><label>Pares</label>
+          <input id="o-pairs" type="number" inputmode="numeric" placeholder="0" value="${o?o.pairs:''}"></div>
+        <div class="field"><label>Valor do pedido</label>
+          <input id="o-value" type="number" inputmode="decimal" placeholder="0,00" value="${o?o.value:''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Data do pedido</label>
+          <input type="date" id="o-date" value="${o?o.date:keyOf(new Date())}"></div>
+        <div class="field"><label>Entrega prevista</label>
+          <input type="date" id="o-delivery" value="${o&&o.delivery?o.delivery:''}"></div>
+      </div>
+      <div class="field"><label>Situação</label>
+        <select id="o-status">
+          ${ORDER_STATUS.map(st=>`<option value="${st}" ${o&&o.status===st?'selected':''}>${st}</option>`).join("")}
+        </select></div>
+      <div class="field"><label>Observações</label>
+        <textarea id="o-notes" rows="3" placeholder="Ex: numeração 34 ao 39, coleção verão">${o?this.esc(o.notes||''):''}</textarea></div>
+      <button class="primary-btn" onclick="app.saveOrder()">${o?"Salvar":"Registrar pedido"}</button>
+      <button class="ghost-btn" onclick="app.orderToCalendar()">🔔 Lembrete da entrega no Calendário</button>
+      ${o?'<button class="ghost-btn" onclick="app.deleteOrder(\''+o.id+'\')">Excluir pedido</button>':''}`);
+  },
+  saveOrder(){
+    const clientId=$("#o-client").value;
+    const brandId=$("#o-brand").value;
+    if(!clientId){ this.toast("Escolha o cliente."); return; }
+    if(!brandId){ this.toast("Escolha a marca."); return; }
+    const pairs=parseInt(($("#o-pairs").value||"0"),10)||0;
+    const value=parseFloat(($("#o-value").value||"0").replace(",","."))||0;
+    if(pairs<=0&&value<=0){ this.toast("Informe os pares ou o valor."); return; }
+    const obj={clientId,brandId,pairs,value,
+      date:$("#o-date").value||keyOf(new Date()),
+      delivery:$("#o-delivery").value||"",
+      status:$("#o-status").value||ORDER_STATUS[0],
+      notes:($("#o-notes").value||"").trim()};
+    if(this._ordId){ Object.assign(this.data.orders.find(x=>x.id===this._ordId),obj); }
+    else { this.data.orders.push({id:uid(),...obj}); }
+    this.closeSheet(); this.go("orders"); this.toast("Pedido salvo.");
+  },
+  deleteOrder(id){
+    this.data.orders=this.data.orders.filter(o=>o.id!==id);
+    this.closeSheet(); this.go("orders"); this.toast("Pedido excluído.");
+  },
+  orderToCalendar(){
+    const dv=$("#o-delivery").value;
+    if(!dv){ this.toast("Informe a entrega prevista primeiro."); return; }
+    const start=new Date(dv+"T09:00");
+    if(isNaN(start)){ this.toast("Data inválida."); return; }
+    const c=this.data.clients.find(x=>x.id===$("#o-client").value);
+    const b=this.data.brands.find(x=>x.id===$("#o-brand").value);
+    const nome="Entrega "+(b?b.name:"pedido")+(c?" — "+c.name:"");
+    const desc=[($("#o-pairs").value||"0")+" pares",
+                ($("#o-value").value?money(parseFloat($("#o-value").value)):""),
+                c&&c.phone?c.phone:""].filter(Boolean).join(" · ");
+    this.makeICS({name:nome,place:c?c.city:"",desc},start,1440,60);
+    this.toast("Confirme no Calendário que abrir.");
   },
 
   /* ================= CLIENTES ================= */
@@ -1290,7 +1541,7 @@ const app = {
       <div class="field"><label>Telefone</label>
         <input id="c-phone" type="tel" placeholder="Ex: (14) 99999-0000" value="${c?this.esc(c.phone||''):''}"></div>
       <div class="field"><label>Marca que mais compra</label>
-        <input id="c-brand" placeholder="Ex: Maite" value="${c?this.esc(c.brand||''):''}" list="brand-list">
+        <input id="c-brand" placeholder="Ex: Maithë" value="${c?this.esc(c.brand||''):''}" list="brand-list">
         ${this.brandDatalist()}</div>
       <div class="field"><label>Observações</label>
         <textarea id="c-notes" rows="3" placeholder="Ex: prefere visita de manhã, paga a 30 dias">${c?this.esc(c.notes||''):''}</textarea></div>
@@ -1332,13 +1583,34 @@ const app = {
         const p=e.date.split("-");
         return `<div class="ev"><div class="ev-time">${p[2]}/${p[1]}</div><div class="ev-body"><div class="ev-title">${this.esc(e.title)}</div><div class="ev-meta">${e.time||""}</div></div></div>`;
       }).join(""):'<div class="empty-note" style="padding:20px">Nenhuma visita registrada ainda.</div>'}
-      <button class="primary-btn" onclick="app.newVisitFor('${c.id}')">Marcar visita</button>
+      <div class="section-label" style="margin-left:0">Pedidos deste cliente</div>
+      ${(()=>{
+        const ped=this.data.orders.filter(o=>o.clientId===c.id).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
+        if(!ped.length) return '<div class="empty-note" style="padding:20px">Nenhum pedido registrado.</div>';
+        const tp=this.data.orders.filter(o=>o.clientId===c.id).reduce((x,o)=>x+(o.pairs||0),0);
+        const tv=this.data.orders.filter(o=>o.clientId===c.id).reduce((x,o)=>x+(o.value||0),0);
+        return `<div class="card" style="margin-bottom:12px"><div class="action-desc" style="margin:0">Total comprado</div>
+          <div class="pilar-name" style="font-size:calc(20px * var(--fs));margin-top:4px">${tp} pares · ${money(tv)}</div></div>`
+          + ped.map(o=>{
+            const b=this.data.brands.find(x=>x.id===o.brandId);
+            const p=o.date.split("-");
+            return `<div class="ev"><div class="ev-time">${p[2]}/${p[1]}</div><div class="ev-body">
+              <div class="ev-title">${o.pairs||0} pares · ${moneyShort(o.value||0)}</div>
+              <div class="ev-meta">${b?this.esc(b.name):""} · ${this.esc(o.status||"")}</div></div></div>`;
+          }).join("");
+      })()}
+      <button class="primary-btn" onclick="app.newOrderFor('${c.id}')">Registrar pedido</button>
+      <button class="ghost-btn" onclick="app.newVisitFor('${c.id}')">Marcar visita</button>
       ${c.phone?'<button class="ghost-btn" onclick="app.callClient(\''+c.id+'\')">Ligar</button>':''}
       <button class="ghost-btn" onclick="app.openClientSheet('${c.id}')">Editar cadastro</button>`);
   },
   callClient(id){
     const c=this.data.clients.find(x=>x.id===id);
     if(c&&c.phone) window.location.href="tel:"+c.phone.replace(/[^0-9+]/g,"");
+  },
+  newOrderFor(id){
+    this.closeSheet();
+    setTimeout(()=>{ this.openOrderSheet(null,id); },250);
   },
   newVisitFor(id){
     this.closeSheet();
@@ -1353,7 +1625,7 @@ const app = {
     const set=new Set();
     this.data.clients.forEach(c=>{ if(c.brand) set.add(c.brand); });
     this.data.tx.forEach(t=>{ if(t.brand) set.add(t.brand); });
-    ["Jorge Bischof","Maite","Ineftali"].forEach(b=>set.add(b));
+    ["Jorge Bischoff","Maithë","Neftali"].forEach(b=>set.add(b));
     return '<datalist id="brand-list">'+[...set].map(b=>`<option value="${this.esc(b)}">`).join("")+'</datalist>';
   },
 
@@ -1373,6 +1645,14 @@ const app = {
         <div class="action-body"><div class="action-title">Começar o mapeamento</div><div class="action-desc">Responda no seu ritmo, sem certo ou errado</div></div>
         <div class="action-arrow">›</div></div>
       <div class="section-label">Ferramentas</div>
+      <div class="action-card" onclick="app.go('orders')">
+        <div class="action-ico a">📦</div>
+        <div class="action-body"><div class="action-title">Pedidos</div><div class="action-desc">${this.data.orders.length} registrado(s) · pares, valores e entregas</div></div>
+        <div class="action-arrow">›</div></div>
+      <div class="action-card" onclick="app.go('brands')">
+        <div class="action-ico p">🏷️</div>
+        <div class="action-body"><div class="action-title">Marcas</div><div class="action-desc">${this.data.brands.filter(b=>b.active).length} ativa(s) · suas representações</div></div>
+        <div class="action-arrow">›</div></div>
       <div class="action-card" onclick="app.go('clients')">
         <div class="action-ico">🏪</div>
         <div class="action-body"><div class="action-title">Meus clientes</div><div class="action-desc">${this.data.clients.length} cadastrado(s) · lojas, contatos e histórico de visitas</div></div>
