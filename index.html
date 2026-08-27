@@ -424,6 +424,9 @@
       <div class="legend"><span><i style="background:var(--brand-2)"></i>Entrou</span><span><i style="background:var(--rose)"></i>Saiu</span></div>
     </div>
 
+    <div class="section-label">Quanto cada marca rendeu</div>
+    <div class="card" id="fin-brands"></div>
+
     <div class="section-label">Onde o dinheiro foi</div>
     <div class="card" id="fin-cats"></div>
 
@@ -432,6 +435,17 @@
   </section>
 
   <!-- PROFILE -->
+  <section id="clients-screen" class="screen">
+    <div class="head">
+      <div>
+        <h1 class="title">Clientes</h1>
+        <div class="date">Suas lojas e contatos.</div>
+      </div>
+      <button class="icon-btn" onclick="app.go('profile')">✕</button>
+    </div>
+    <div id="client-list"></div>
+  </section>
+
   <section id="profile-screen" class="screen">
     <h1 class="title">Meu perfil</h1>
     <div class="sub-title">Entenda como o seu cérebro funciona.</div>
@@ -551,7 +565,7 @@ const PILLARS = [
 ];
 
 const app = {
-  data:{ tasks:[], tx:[], events:[], focus:null, focusDate:null, quiz:null, quizAnswers:{}, fontScale:1 },
+  data:{ tasks:[], tx:[], events:[], clients:[], focus:null, focusDate:null, quiz:null, quizAnswers:{}, fontScale:1 },
   calView:"mes", finView:"mes",
   cursor:new Date(),
   selected:keyOf(new Date()),
@@ -559,6 +573,7 @@ const app = {
   load(){
     try{ const d=JSON.parse(localStorage.getItem("meufoco_v4")||"{}"); Object.assign(this.data,d); }catch(e){}
     if(!Array.isArray(this.data.events)) this.data.events=[];
+    if(!Array.isArray(this.data.clients)) this.data.clients=[];
     const t=keyOf(new Date());
     if(this.data.focusDate!==t){ this.data.focus=null; this.data.focusDate=t; }
     document.documentElement.style.setProperty("--fs",this.data.fontScale||1);
@@ -579,6 +594,7 @@ const app = {
     document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===tab));
     $("#fab").style.display = tab==="profile"?"none":"flex";
     if(tab==="profile") this.renderProfile();
+    if(tab==="clients") this.renderClients();
     if(tab==="agenda") this.renderCalendar();
     this.render();
     document.querySelector(".screen.active").scrollTop=0;
@@ -730,9 +746,11 @@ const app = {
     box.innerHTML=items.slice(0,4).map(i=>this.evHTML(i)).join("");
   },
 
-  openEventSheet(id){
+  openEventSheet(id,preClientId){
     const e = id ? this.data.events.find(x=>x.id===id) : null;
     this._evId = id||null;
+    this._evClientId = e?(e.clientId||null):(preClientId||null);
+    const pre = preClientId ? this.data.clients.find(c=>c.id===preClientId) : null;
     const dv = e?e.date:this.selected;
     const tv = e?e.time:"09:00";
     this.openSheet(`<h2>${e?"Editar compromisso":"Novo compromisso"}</h2>
@@ -742,10 +760,15 @@ const app = {
         <div class="field"><label>Dia</label><input type="date" id="ev-date" value="${dv}"></div>
         <div class="field"><label>Hora</label><input type="time" id="ev-time" value="${tv}"></div>
       </div>
-      <div class="field"><label>Cliente (opcional)</label>
-        <input id="ev-client" placeholder="Ex: Loja Bella / Maria" value="${e?this.esc(e.client||''):''}"></div>
+      <div class="field"><label>Cliente</label>
+        <select id="ev-clientid" onchange="app.pickEventClient(this.value)">
+          <option value="">— sem cliente —</option>
+          ${[...this.data.clients].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>
+            `<option value="${c.id}" ${this._evClientId===c.id?'selected':''}>${this.esc(c.name)}</option>`).join("")}
+        </select>
+        <div class="hint" style="margin-top:8px">Cadastre clientes na aba Perfil para eles aparecerem aqui.</div></div>
       <div class="field"><label>Local (opcional)</label>
-        <input id="ev-place" placeholder="Ex: Centro, Bauru" value="${e?this.esc(e.place||''):''}"></div>
+        <input id="ev-place" placeholder="Ex: Centro, Bauru" value="${e?this.esc(e.place||''):(pre?this.esc(pre.city||''):'')}"></div>
       <div class="field"><label>Observações (opcional)</label>
         <textarea id="ev-notes" rows="3" placeholder="Ex: levar mostruário Jorge Bischof">${e?this.esc(e.notes||''):''}</textarea></div>
       <button class="primary-btn" onclick="app.saveEvent()">${e?"Salvar":"Marcar compromisso"}</button>
@@ -757,9 +780,11 @@ const app = {
   saveEvent(){
     const title=($("#ev-title").value||"").trim();
     if(!title){ this.toast("Escreva o que é o compromisso."); return; }
+    const cid=$("#ev-clientid").value||null;
+    const c=cid?this.data.clients.find(x=>x.id===cid):null;
     const obj={
       title, date:$("#ev-date").value, time:$("#ev-time").value,
-      client:($("#ev-client").value||"").trim(),
+      clientId:cid, client:c?c.name:"",
       place:($("#ev-place").value||"").trim(),
       notes:($("#ev-notes").value||"").trim()
     };
@@ -772,12 +797,20 @@ const app = {
     this.data.events=this.data.events.filter(e=>e.id!==id);
     this.closeSheet(); this.render(); this.renderCalendar(); this.toast("Compromisso excluído.");
   },
+  pickEventClient(cid){
+    this._evClientId=cid||null;
+    const c=cid?this.data.clients.find(x=>x.id===cid):null;
+    const pl=$("#ev-place");
+    if(c&&c.city&&pl&&!pl.value.trim()) pl.value=c.city;
+  },
   eventToCalendar(){
     const title=($("#ev-title").value||"").trim();
     if(!title){ this.toast("Escreva o compromisso primeiro."); return; }
     const start=new Date($("#ev-date").value+"T"+$("#ev-time").value);
     if(isNaN(start)){ this.toast("Dia ou hora inválidos."); return; }
-    const parts=[($("#ev-client").value||"").trim(),($("#ev-notes").value||"").trim()].filter(Boolean);
+    const cid=$("#ev-clientid").value;
+    const c=cid?this.data.clients.find(x=>x.id===cid):null;
+    const parts=[c?c.name+(c.phone?" — "+c.phone:""):"",($("#ev-notes").value||"").trim()].filter(Boolean);
     this.makeICS({name:title,place:($("#ev-place").value||"").trim(),desc:parts.join(" — ")},start,30,60);
     this.toast("Confirme no Calendário que abrir.");
   },
@@ -858,6 +891,7 @@ const app = {
   openAdd(){
     const s=document.querySelector(".screen.active").id;
     if(s==="money-screen") this.openTxSheet();
+    else if(s==="clients-screen") this.openClientSheet();
     else if(s==="agenda-screen") this.openEventSheet();
     else if(s==="home-screen") this.chooseAdd();
     else this.openTaskSheet();
@@ -1018,8 +1052,29 @@ const app = {
     $("#bal-in").textContent=money(inc);
     $("#bal-out").textContent=money(out);
     this.renderBars(start,end);
+    this.renderBrands(inRange);
     this.renderCats(inRange,out);
     this.renderTx();
+  },
+  renderBrands(list){
+    const box=$("#fin-brands"); if(!box)return;
+    const ins=list.filter(t=>t.type==="in"&&t.brand);
+    if(!ins.length){
+      box.innerHTML='<div class="empty-note">Nenhuma comissão com marca neste período.<br>Ao registrar uma entrada, informe a marca para ver o total de cada uma aqui.</div>';
+      return;
+    }
+    const map={};
+    ins.forEach(t=>{ map[t.brand]=(map[t.brand]||0)+t.val; });
+    const arr=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+    const total=arr.reduce((s,x)=>s+x[1],0);
+    const max=arr[0][1]||1;
+    box.innerHTML=arr.map(([b,v])=>`
+      <div class="cat-row">
+        <div class="cat-name">${this.esc(b)}
+          <div class="cat-bar"><span style="width:${(v/max)*100}%;background:var(--brand)"></span></div>
+        </div>
+        <div class="cat-val" style="color:var(--brand)">${moneyShort(v)}<div class="action-desc" style="margin-top:3px;text-align:right">${Math.round((v/total)*100)}%</div></div>
+      </div>`).join("");
   },
   renderBars(start,end){
     const box=$("#fin-bars");
@@ -1105,18 +1160,28 @@ const app = {
       <div class="field"><label>Valor</label><input id="tx-val" type="number" inputmode="decimal" placeholder="0,00"></div>
       <div class="field"><label>Descrição</label><input id="tx-name" placeholder="Ex: comissão, combustível"></div>
       <div class="field"><label>Categoria</label><input id="tx-cat" placeholder="Ex: trabalho, alimentação, carro"></div>
+      <div class="field" id="brand-field"><label>Marca (para comissões)</label>
+        <input id="tx-brand" placeholder="Ex: Jorge Bischof" list="brand-list">
+        ${this.brandDatalist()}</div>
       <div class="field"><label>Dia</label><input type="date" id="tx-date" value="${keyOf(new Date())}"></div>
       <button class="primary-btn" onclick="app.saveTx()">Registrar</button>`);
+    const bf=$("#brand-field"); if(bf) bf.style.display="none";
     setTimeout(()=>{ const el=$("#tx-val"); if(el) el.focus(); },300);
   },
-  selIO(b){ document.querySelectorAll("#io-seg button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); this._txType=b.dataset.t; },
+  selIO(b){
+    document.querySelectorAll("#io-seg button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); this._txType=b.dataset.t;
+    const bf=$("#brand-field"); if(bf) bf.style.display=this._txType==="in"?"block":"none";
+  },
   saveTx(){
     const val=parseFloat(($("#tx-val").value||"").replace(",","."));
     const name=($("#tx-name").value||"").trim();
     if(!val||val<=0){ this.toast("Coloque um valor válido."); return; }
     if(!name){ this.toast("Escreva uma descrição."); return; }
     this.data.tx.unshift({id:uid(),type:this._txType,val,name,
-      cat:($("#tx-cat").value||"").trim(),date:$("#tx-date").value||keyOf(new Date())});
+      cat:($("#tx-cat").value||"").trim(),
+      brand:this._txType==="in"?($("#tx-brand").value||"").trim():"",
+      date:$("#tx-date").value||keyOf(new Date())});
     this.closeSheet(); this.go("money");
   },
 
@@ -1133,15 +1198,163 @@ const app = {
         </div>
         <div class="hint">Ajuste até ficar confortável de ler. Muda na hora.</div>
       </div>
-      <div class="field"><label>Seus dados</label>
-        <div class="hint" style="margin-top:0">Tudo fica salvo só neste aparelho. ${this.data.tasks.length} tarefa(s), ${this.data.events.length} compromisso(s), ${this.data.tx.length} movimentação(ões).</div>
+      <div class="field"><label>Cópia de segurança</label>
+        <div class="hint" style="margin-top:0;margin-bottom:12px">Seus dados ficam só neste aparelho. Se limpar o navegador ou trocar de celular, você perde tudo. Faça uma cópia de vez em quando e guarde no iCloud Drive.</div>
+        <button class="primary-btn" onclick="app.exportData()">Salvar cópia dos meus dados</button>
+        <button class="ghost-btn" onclick="app.askImport()">Restaurar de uma cópia</button>
       </div>
+      <div class="field"><label>O que você tem hoje</label>
+        <div class="hint" style="margin-top:0">${this.data.tasks.length} tarefa(s) · ${this.data.events.length} compromisso(s) · ${this.data.clients.length} cliente(s) · ${this.data.tx.length} movimentação(ões).</div>
+      </div>
+      <input type="file" id="import-file" accept=".json,application/json" style="display:none" onchange="app.doImport(this)">
       <button class="ghost-btn" onclick="app.closeSheet()">Fechar</button>`);
+  },
+  exportData(){
+    const payload={app:"Meu Foco",versao:4,quando:new Date().toISOString(),dados:this.data};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const d=new Date();
+    a.href=url; a.download="meu-foco-copia-"+keyOf(d)+".json";
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1500);
+    this.toast("Escolha Salvar em Arquivos.");
+  },
+  askImport(){ const f=$("#import-file"); if(f) f.click(); },
+  doImport(input){
+    const file=input.files&&input.files[0]; if(!file)return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const p=JSON.parse(rd.result);
+        const d=p&&p.dados?p.dados:p;
+        if(!d||typeof d!=="object") throw new Error();
+        this._pendingImport=d;
+        this.openSheet(`<h2>Restaurar esta cópia?</h2>
+          <p class="sub">A cópia tem ${(d.tasks||[]).length} tarefa(s), ${(d.events||[]).length} compromisso(s), ${(d.clients||[]).length} cliente(s) e ${(d.tx||[]).length} movimentação(ões).</p>
+          <div class="hint" style="margin-top:0;margin-bottom:16px">Atenção: isso substitui tudo o que está no app agora. O que está aqui hoje será apagado.</div>
+          <button class="primary-btn" onclick="app.confirmImport()">Sim, restaurar</button>
+          <button class="ghost-btn" onclick="app.closeSheet()">Cancelar</button>`);
+      }catch(e){ this.toast("Arquivo inválido. Use uma cópia gerada pelo app."); }
+    };
+    rd.readAsText(file);
+    input.value="";
+  },
+  confirmImport(){
+    const d=this._pendingImport; if(!d)return;
+    this.data=Object.assign({tasks:[],tx:[],events:[],clients:[],focus:null,focusDate:null,quiz:null,quizAnswers:{},fontScale:1},d);
+    this._pendingImport=null;
+    document.documentElement.style.setProperty("--fs",this.data.fontScale||1);
+    this.save(); this.closeSheet(); this.go("home"); this.toast("Dados restaurados.");
   },
   setFont(v){
     this.data.fontScale=v;
     document.documentElement.style.setProperty("--fs",v);
     this.save(); this.openSettings();
+  },
+
+  /* ================= CLIENTES ================= */
+  renderClients(){
+    const box=$("#client-list");
+    if(!this.data.clients.length){
+      box.innerHTML='<div class="empty-note">Nenhum cliente cadastrado.<br>Toque no + para cadastrar sua primeira loja.</div>';
+      return;
+    }
+    const list=[...this.data.clients].sort((a,b)=>a.name.localeCompare(b.name));
+    box.innerHTML=list.map(c=>{
+      const visitas=this.data.events.filter(e=>e.clientId===c.id).length;
+      const meta=[c.city,c.contact].filter(Boolean).map(x=>this.esc(x)).join(" · ");
+      return `<div class="task" onclick="app.openClient('${c.id}')">
+        <div class="task-body">
+          <div class="task-name">${this.esc(c.name)}</div>
+          ${meta?`<div class="action-desc">${meta}</div>`:''}
+          <div class="task-meta">
+            <span class="pill g">${visitas} visita${visitas===1?'':'s'}</span>
+            ${c.brand?`<span class="pill p">${this.esc(c.brand)}</span>`:''}
+          </div>
+        </div>
+        <div class="action-arrow">›</div>
+      </div>`;
+    }).join("");
+  },
+  openClientSheet(editId){
+    const c = editId ? this.data.clients.find(x=>x.id===editId) : null;
+    this._cliId = editId||null;
+    this.openSheet(`<h2>${c?"Editar cliente":"Novo cliente"}</h2>
+      <div class="field"><label>Nome da loja ou cliente</label>
+        <input id="c-name" placeholder="Ex: Loja Bella" value="${c?this.esc(c.name):''}"></div>
+      <div class="field"><label>Pessoa de contato</label>
+        <input id="c-contact" placeholder="Ex: Maria, compradora" value="${c?this.esc(c.contact||''):''}"></div>
+      <div class="field"><label>Cidade</label>
+        <input id="c-city" placeholder="Ex: Bauru" value="${c?this.esc(c.city||''):''}"></div>
+      <div class="field"><label>Telefone</label>
+        <input id="c-phone" type="tel" placeholder="Ex: (14) 99999-0000" value="${c?this.esc(c.phone||''):''}"></div>
+      <div class="field"><label>Marca que mais compra</label>
+        <input id="c-brand" placeholder="Ex: Maite" value="${c?this.esc(c.brand||''):''}" list="brand-list">
+        ${this.brandDatalist()}</div>
+      <div class="field"><label>Observações</label>
+        <textarea id="c-notes" rows="3" placeholder="Ex: prefere visita de manhã, paga a 30 dias">${c?this.esc(c.notes||''):''}</textarea></div>
+      <button class="primary-btn" onclick="app.saveClient()">${c?"Salvar":"Cadastrar cliente"}</button>
+      ${c&&c.phone?'<button class="ghost-btn" onclick="app.callClient(\''+c.id+'\')">Ligar para este cliente</button>':''}
+      ${c?'<button class="ghost-btn" onclick="app.deleteClient(\''+c.id+'\')">Excluir cliente</button>':''}`);
+    if(!c) setTimeout(()=>{ const el=$("#c-name"); if(el) el.focus(); },300);
+  },
+  saveClient(){
+    const name=($("#c-name").value||"").trim();
+    if(!name){ this.toast("Escreva o nome do cliente."); return; }
+    const obj={name,
+      contact:($("#c-contact").value||"").trim(),
+      city:($("#c-city").value||"").trim(),
+      phone:($("#c-phone").value||"").trim(),
+      brand:($("#c-brand").value||"").trim(),
+      notes:($("#c-notes").value||"").trim()};
+    if(this._cliId){ Object.assign(this.data.clients.find(x=>x.id===this._cliId),obj); }
+    else { this.data.clients.push({id:uid(),...obj}); }
+    this.closeSheet(); this.go("clients"); this.toast("Cliente salvo.");
+  },
+  openClient(id){
+    const c=this.data.clients.find(x=>x.id===id); if(!c)return;
+    const evs=this.data.events.filter(e=>e.clientId===id)
+      .sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time)).slice(0,6);
+    const linhas=[
+      c.contact?["Contato",c.contact]:null,
+      c.city?["Cidade",c.city]:null,
+      c.phone?["Telefone",c.phone]:null,
+      c.brand?["Marca",c.brand]:null
+    ].filter(Boolean);
+    this.openSheet(`<h2>${this.esc(c.name)}</h2>
+      ${linhas.length?`<div class="card" style="padding:6px 18px;margin-bottom:16px">
+        ${linhas.map(l=>`<div class="pilar-row"><div class="pilar-info"><div class="action-desc" style="margin:0">${l[0]}</div><div class="pilar-name">${this.esc(l[1])}</div></div></div>`).join("")}
+      </div>`:''}
+      ${c.notes?`<div class="field"><label>Observações</label><div class="guide-body">${this.esc(c.notes)}</div></div>`:''}
+      <div class="section-label" style="margin-left:0">Últimas visitas</div>
+      ${evs.length?evs.map(e=>{
+        const p=e.date.split("-");
+        return `<div class="ev"><div class="ev-time">${p[2]}/${p[1]}</div><div class="ev-body"><div class="ev-title">${this.esc(e.title)}</div><div class="ev-meta">${e.time||""}</div></div></div>`;
+      }).join(""):'<div class="empty-note" style="padding:20px">Nenhuma visita registrada ainda.</div>'}
+      <button class="primary-btn" onclick="app.newVisitFor('${c.id}')">Marcar visita</button>
+      ${c.phone?'<button class="ghost-btn" onclick="app.callClient(\''+c.id+'\')">Ligar</button>':''}
+      <button class="ghost-btn" onclick="app.openClientSheet('${c.id}')">Editar cadastro</button>`);
+  },
+  callClient(id){
+    const c=this.data.clients.find(x=>x.id===id);
+    if(c&&c.phone) window.location.href="tel:"+c.phone.replace(/[^0-9+]/g,"");
+  },
+  newVisitFor(id){
+    this.closeSheet();
+    setTimeout(()=>{ this.openEventSheet(null,id); },250);
+  },
+  deleteClient(id){
+    this.data.clients=this.data.clients.filter(c=>c.id!==id);
+    this.data.events.forEach(e=>{ if(e.clientId===id) e.clientId=null; });
+    this.closeSheet(); this.go("clients"); this.toast("Cliente excluído.");
+  },
+  brandDatalist(){
+    const set=new Set();
+    this.data.clients.forEach(c=>{ if(c.brand) set.add(c.brand); });
+    this.data.tx.forEach(t=>{ if(t.brand) set.add(t.brand); });
+    ["Jorge Bischof","Maite","Ineftali"].forEach(b=>set.add(b));
+    return '<datalist id="brand-list">'+[...set].map(b=>`<option value="${this.esc(b)}">`).join("")+'</datalist>';
   },
 
   /* ================= PERFIL ================= */
@@ -1160,6 +1373,10 @@ const app = {
         <div class="action-body"><div class="action-title">Começar o mapeamento</div><div class="action-desc">Responda no seu ritmo, sem certo ou errado</div></div>
         <div class="action-arrow">›</div></div>
       <div class="section-label">Ferramentas</div>
+      <div class="action-card" onclick="app.go('clients')">
+        <div class="action-ico">🏪</div>
+        <div class="action-body"><div class="action-title">Meus clientes</div><div class="action-desc">${this.data.clients.length} cadastrado(s) · lojas, contatos e histórico de visitas</div></div>
+        <div class="action-arrow">›</div></div>
       <div class="action-card" onclick="app.openMeeting()">
         <div class="action-ico p">📝</div>
         <div class="action-body"><div class="action-title">Depois da reunião</div><div class="action-desc">Descarregue o que ficou combinado direto em tarefas</div></div>
