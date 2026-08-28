@@ -264,6 +264,15 @@
     box-shadow:var(--sh-lg);
   }
   @keyframes up{from{transform:translateY(100%);}to{transform:none;}}
+  .sheet-close{
+    position:sticky;top:0;float:right;margin:-6px -4px 0 0;
+    width:44px;height:44px;border-radius:50%;
+    background:var(--surface);border:1px solid var(--line);
+    font-size:19px;font-weight:700;color:var(--ink-soft);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:var(--sh);z-index:5;
+  }
+  .sheet-close:active{background:var(--line);}
   .grabber{width:42px;height:5px;border-radius:3px;background:#d6d2ca;margin:9px auto 22px;}
   .sheet h2{font-size:calc(23px * var(--fs));font-weight:800;margin:0 0 8px;}
   .sheet .sub{font-size:calc(16px * var(--fs));color:var(--ink-soft);margin:0 0 22px;line-height:1.55;}
@@ -604,6 +613,7 @@ const app = {
     if(!Array.isArray(this.data.events)) this.data.events=[];
     if(!Array.isArray(this.data.clients)) this.data.clients=[];
     if(!Array.isArray(this.data.orders)) this.data.orders=[];
+    if(!Array.isArray(this.data.quizHistory)) this.data.quizHistory=[];
     if(!Array.isArray(this.data.brands)||!this.data.brands.length){
       this.data.brands=[
         {id:uid(),name:"Jorge Bischoff",pct:null,active:true},
@@ -1283,7 +1293,7 @@ const app = {
   },
   confirmImport(){
     const d=this._pendingImport; if(!d)return;
-    this.data=Object.assign({tasks:[],tx:[],events:[],clients:[],brands:[],orders:[],focus:null,focusDate:null,quiz:null,quizAnswers:{},fontScale:1},d);
+    this.data=Object.assign({tasks:[],tx:[],events:[],clients:[],brands:[],orders:[],quizHistory:[],focus:null,focusDate:null,quiz:null,quizAnswers:{},fontScale:1},d);
     this._pendingImport=null;
     document.documentElement.style.setProperty("--fs",this.data.fontScale||1);
     this.save(); this.closeSheet(); this.go("home"); this.toast("Dados restaurados.");
@@ -1630,20 +1640,8 @@ const app = {
   },
 
   /* ================= PERFIL ================= */
-  renderProfile(){
-    const box=$("#profile-content");
-    if(this.data.quiz){ this.renderResults(box); return; }
-    box.innerHTML=`
-      <div class="card intro-card">
-        <div class="intro-emoji">🧩</div>
-        <h2>Mapeie o seu perfil</h2>
-        <p>Um questionário de autoconhecimento que olha para seis áreas do seu funcionamento — organização, atenção, impulsividade, social, sensorial e emocional.</p>
-        <p style="color:var(--ink-faint);font-size:calc(15px * var(--fs))">24 perguntas · uns 5 minutos · fica só no seu aparelho</p>
-      </div>
-      <div class="action-card" onclick="app.startQuiz()" style="margin-top:14px">
-        <div class="action-ico">✦</div>
-        <div class="action-body"><div class="action-title">Começar o mapeamento</div><div class="action-desc">Responda no seu ritmo, sem certo ou errado</div></div>
-        <div class="action-arrow">›</div></div>
+  toolsHTML(){
+    return `
       <div class="section-label">Ferramentas</div>
       <div class="action-card" onclick="app.go('orders')">
         <div class="action-ico a">📦</div>
@@ -1655,7 +1653,7 @@ const app = {
         <div class="action-arrow">›</div></div>
       <div class="action-card" onclick="app.go('clients')">
         <div class="action-ico">🏪</div>
-        <div class="action-body"><div class="action-title">Meus clientes</div><div class="action-desc">${this.data.clients.length} cadastrado(s) · lojas, contatos e histórico de visitas</div></div>
+        <div class="action-body"><div class="action-title">Meus clientes</div><div class="action-desc">${this.data.clients.length} cadastrado(s) · lojas, contatos e histórico</div></div>
         <div class="action-arrow">›</div></div>
       <div class="action-card" onclick="app.openMeeting()">
         <div class="action-ico p">📝</div>
@@ -1664,8 +1662,78 @@ const app = {
       <div class="action-card" onclick="app.openGuideList()">
         <div class="action-ico a">🧭</div>
         <div class="action-body"><div class="action-title">Guias de estratégias</div><div class="action-desc">Táticas práticas para cada tipo de dificuldade</div></div>
+        <div class="action-arrow">›</div></div>`;
+  },
+  renderProfile(){
+    const box=$("#profile-content");
+    box.innerHTML = this.mappingHTML() + this.toolsHTML() +
+      `<div class="disclaimer">Este é um instrumento de autoconhecimento, não um diagnóstico. Ele aponta padrões pra você refletir e, se quiser, levar a um profissional. Vários traços aqui também aparecem em outras situações da vida — o resultado é um ponto de partida, não um rótulo.</div>`;
+  },
+  mappingHTML(){
+    if(!this.data.quiz){
+      return `
+      <div class="card intro-card">
+        <div class="intro-emoji">🧩</div>
+        <h2>Mapeie o seu perfil</h2>
+        <p>Um questionário de autoconhecimento que olha para seis áreas do seu funcionamento — organização, atenção, impulsividade, social, sensorial e emocional.</p>
+        <p style="color:var(--ink-faint);font-size:calc(15px * var(--fs))">24 perguntas · uns 5 minutos · fica só no seu aparelho</p>
+      </div>
+      <div class="action-card" onclick="app.startQuiz()" style="margin-top:14px">
+        <div class="action-ico">✦</div>
+        <div class="action-body"><div class="action-title">Começar o mapeamento</div><div class="action-desc">Responda no seu ritmo, sem certo ou errado</div></div>
+        <div class="action-arrow">›</div></div>`;
+    }
+    const scores=this.data.quiz.scores;
+    const hist=this.data.quizHistory||[];
+    const ant=hist.length?hist[hist.length-1]:null;
+    const rows=PILLARS.map(p=>{
+      const pct=scores[p.id]||0;
+      let delta="";
+      if(ant&&ant.scores&&ant.scores[p.id]!=null){
+        const d=pct-ant.scores[p.id];
+        if(d!==0) delta=`<span class="pill ${d<0?'g':'a'}" style="margin-left:8px">${d>0?'+':''}${d}</span>`;
+      }
+      return `<div class="pilar-row">
+        <div class="pilar-info"><div class="pilar-name">${p.name}${delta}</div>
+        <div class="pilar-bar"><span style="width:${pct}%"></span></div></div>
+        <div class="pilar-pct">${pct}%</div>
+        <button class="guide-btn" onclick="app.openGuide('${p.id}')">Guia ›</button>
+      </div>`;
+    }).join("");
+    const dt=this.data.quiz.date?parseKey(this.data.quiz.date).toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"}):"";
+    return `
+      <div class="card">
+        <div style="text-align:center;font-size:calc(14px * var(--fs));font-weight:800;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.8px">Seu perfil</div>
+        <div class="radar-wrap">${this.radarSVG(scores)}</div>
+        <div style="text-align:center;font-size:calc(15px * var(--fs));color:var(--ink-faint);line-height:1.55">Mapeado em ${dt}${ant?" · os números ao lado comparam com o anterior":""}</div>
+      </div>
+      <div class="section-label">Áreas · toque no guia para estratégias</div>
+      <div class="card" style="padding:6px 20px">${rows}</div>
+      <div class="action-card" onclick="app.retakeQuiz()" style="margin-top:14px">
+        <div class="action-ico">↻</div>
+        <div class="action-body"><div class="action-title">Refazer o mapeamento</div><div class="action-desc">${hist.length?"Você tem "+(hist.length+1)+" mapeamento(s) guardado(s)":"Compare com este resultado depois"}</div></div>
         <div class="action-arrow">›</div></div>
-      <div class="disclaimer">Este é um instrumento de autoconhecimento, não um diagnóstico. Ele aponta padrões pra você refletir e, se quiser, levar a um profissional. Vários traços aqui também aparecem em outras situações da vida — o resultado é um ponto de partida, não um rótulo.</div>`;
+      ${hist.length?`<div class="action-card" onclick="app.showHistory()">
+        <div class="action-ico p">📈</div>
+        <div class="action-body"><div class="action-title">Meu histórico</div><div class="action-desc">Veja como as áreas mudaram ao longo do tempo</div></div>
+        <div class="action-arrow">›</div></div>`:''}`;
+  },
+  showHistory(){
+    const hist=[...(this.data.quizHistory||[]),this.data.quiz].filter(Boolean);
+    const linhas=PILLARS.map(p=>{
+      const vals=hist.map(h=>h.scores?(h.scores[p.id]||0):0);
+      const prim=vals[0], ult=vals[vals.length-1], d=ult-prim;
+      return `<div class="pilar-row">
+        <div class="pilar-info"><div class="pilar-name">${p.name}</div>
+          <div class="action-desc">${vals.join("% → ")}%</div></div>
+        <div class="pilar-pct" style="color:${d<0?'var(--brand)':(d>0?'var(--amber)':'var(--ink-faint)')}">${d>0?'+':''}${d}</div>
+      </div>`;
+    }).join("");
+    const datas=hist.map(h=>h.date?parseKey(h.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit"}):"—").join(" · ");
+    this.openSheet(`<h2>Meu histórico</h2>
+      <p class="sub">Mapeamentos feitos em: ${datas}</p>
+      <div class="card" style="padding:6px 18px">${linhas}</div>
+      <div class="hint">Número menor quer dizer que aquela área está pesando menos no seu dia a dia. Mas variação pequena é normal — o humor do dia e o quanto você dormiu já mudam as respostas. Olhe a tendência ao longo de meses, não de semanas.</div>`);
   },
   openGuideList(){
     this.openSheet(`<h2>Guias de estratégias</h2><p class="sub">Escolha a área em que você quer apoio.</p>
@@ -1689,7 +1757,10 @@ const app = {
       <div class="quiz-progress"><span style="width:${pct}%"></span></div>
       <div class="quiz-q">${q.text}</div>
       <div class="scale">${opts.map(o=>`<button onclick="app.answer(${o[1]})">${o[0]}</button>`).join("")}</div>
-      ${this._qIndex>0?'<div class="quiz-back" onclick="app.prevQuestion()">‹ voltar</div>':''}`;
+      <div class="quiz-back">
+        ${this._qIndex>0?'<span onclick="app.prevQuestion()">‹ voltar</span> &nbsp;·&nbsp; ':''}
+        <span onclick="app.quitQuiz()">sair sem terminar</span>
+      </div>`;
     $("#profile-screen").scrollTop=0;
   },
   answer(v){
@@ -1699,6 +1770,11 @@ const app = {
     if(this._qIndex>=this._questions.length) this.finishQuiz(); else this.showQuestion();
     this.save();
   },
+  quitQuiz(){
+    this._questions=null; this._qIndex=0;
+    this.renderProfile();
+    this.toast("Você pode retomar quando quiser.");
+  },
   prevQuestion(){ if(this._qIndex>0){ this._qIndex--; this.showQuestion(); } },
   finishQuiz(){
     const scores={};
@@ -1707,6 +1783,11 @@ const app = {
       p.q.forEach((_,i)=>{ const v=this.data.quizAnswers[p.id+"_"+i]; if(v!=null){sum+=v;n++;} });
       scores[p.id]=n?Math.round((sum/(n*3))*100):0;
     });
+    if(this.data.quiz&&this.data.quiz.scores){
+      if(!Array.isArray(this.data.quizHistory)) this.data.quizHistory=[];
+      this.data.quizHistory.push(this.data.quiz);
+      if(this.data.quizHistory.length>12) this.data.quizHistory.shift();
+    }
     this.data.quiz={date:keyOf(new Date()),scores};
     this.save(); this.renderProfile();
   },
@@ -1733,7 +1814,7 @@ const app = {
       <div class="disclaimer">Lembrete: isto é autoconhecimento, não diagnóstico. Uma pontuação alta numa área não significa um transtorno — significa que aquilo pesa pra você e que vale a pena ter estratégias. Se quiser aprofundar, leve isso a um profissional.</div>`;
   },
   retakeQuiz(){
-    this.openSheet(`<h2>Refazer o mapeamento?</h2><p class="sub">Suas respostas anteriores serão substituídas.</p>
+    this.openSheet(`<h2>Refazer o mapeamento?</h2><p class="sub">O resultado atual fica guardado no histórico, para você comparar. Nada mais no app é afetado — pedidos, clientes, agenda e finanças continuam iguais.</p>
       <button class="primary-btn" onclick="app.closeSheet();app.data.quiz=null;app.startQuiz()">Sim, refazer</button>
       <button class="ghost-btn" onclick="app.closeSheet()">Cancelar</button>`);
   },
@@ -1796,7 +1877,12 @@ const app = {
     this.closeSheet(); this.go("tasks"); this.toast(lines.length+" tarefa(s) criada(s).");
   },
 
-  openSheet(html){ $("#sheet-content").innerHTML='<div class="grabber"></div>'+html; $("#sheet-back").classList.add("show"); },
+  openSheet(html){
+    $("#sheet-content").innerHTML='<div class="grabber"></div>'
+      + '<button class="sheet-close" onclick="app.closeSheet()" aria-label="Fechar">✕</button>'
+      + html;
+    $("#sheet-back").classList.add("show");
+  },
   closeSheet(){ $("#sheet-back").classList.remove("show"); },
   toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); },
   esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); },
