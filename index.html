@@ -202,6 +202,19 @@
   .switcher button{flex:1;padding:11px;border-radius:10px;font-size:calc(15px * var(--fs));font-weight:700;color:var(--ink-faint);}
   .switcher button.on{background:var(--brand);color:#fff;}
 
+  .period-nav{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .period-nav button{width:46px;height:46px;flex:none;border-radius:14px;background:var(--surface);border:1px solid var(--line);font-size:21px;font-weight:700;color:var(--ink-soft);box-shadow:var(--sh);}
+  .period-label{flex:1;text-align:center;font-size:calc(17px * var(--fs));font-weight:700;text-transform:capitalize;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);}
+  .period-label.hoje{background:var(--brand-soft);border-color:#cfe3dc;color:var(--brand);}
+  .scope-row{display:flex;align-items:center;gap:13px;padding:14px 0;border-bottom:1px solid var(--line);}
+  .scope-row:last-child{border-bottom:none;}
+  .scope-ico{width:42px;height:42px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;font-size:19px;}
+  .fix-row{display:flex;align-items:center;gap:13px;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:10px;box-shadow:var(--sh);}
+  .fix-row.pago{opacity:.55;}
+  .fix-body{flex:1;min-width:0;}
+  .fix-name{font-size:calc(17px * var(--fs));font-weight:600;}
+  .fix-val{font-size:calc(17px * var(--fs));font-weight:800;flex:none;color:var(--rose);}
+  .lanc-btn{font-size:calc(14px * var(--fs));font-weight:700;color:var(--brand);flex:none;padding:8px 12px;border-radius:10px;background:var(--brand-soft);}
   .bars{display:flex;align-items:flex-end;justify-content:space-between;gap:7px;height:130px;padding:8px 0 0;}
   .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;}
   .bar-stack{width:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:3px;flex:1;}
@@ -419,6 +432,12 @@
       <button id="fw-mes" class="on" onclick="app.setFinView('mes')">Mês</button>
     </div>
 
+    <div class="period-nav">
+      <button onclick="app.moveFin(-1)">‹</button>
+      <div class="period-label" id="fin-period" onclick="app.moveFin(0)">—</div>
+      <button onclick="app.moveFin(1)">›</button>
+    </div>
+
     <div class="card bal">
       <div class="bal-k" id="bal-label">Saldo do mês</div>
       <div class="bal-v" id="bal-v">R$ 0,00</div>
@@ -427,6 +446,12 @@
         <div><div class="k">Saiu</div><div class="v" id="bal-out">R$ 0</div></div>
       </div>
     </div>
+
+    <div class="section-label">Trabalho e pessoal</div>
+    <div class="card" id="fin-scope"></div>
+
+    <div class="section-label" id="fixed-label">Despesas fixas</div>
+    <div id="fin-fixed"></div>
 
     <div class="section-label">Movimento</div>
     <div class="card"><div class="bars" id="fin-bars"></div>
@@ -453,8 +478,14 @@
       <button class="icon-btn" onclick="app.go('profile')">✕</button>
     </div>
     <div class="switcher">
-      <button id="ow-mes" class="on" onclick="app.setOrdView('mes')">Este mês</button>
-      <button id="ow-tudo" onclick="app.setOrdView('tudo')">Todos</button>
+      <button id="ow-semana" onclick="app.setOrdView('semana')">Semana</button>
+      <button id="ow-mes" class="on" onclick="app.setOrdView('mes')">Mês</button>
+      <button id="ow-tudo" onclick="app.setOrdView('tudo')">Tudo</button>
+    </div>
+    <div class="period-nav" id="ord-nav">
+      <button onclick="app.moveOrd(-1)">‹</button>
+      <div class="period-label" id="ord-period" onclick="app.moveOrd(0)">—</div>
+      <button onclick="app.moveOrd(1)">›</button>
     </div>
     <div id="ord-summary"></div>
     <div class="section-label">Lista de pedidos</div>
@@ -603,8 +634,8 @@ const PILLARS = [
 ];
 
 const app = {
-  data:{ tasks:[], tx:[], events:[], clients:[], brands:[], orders:[], focus:null, focusDate:null, quiz:null, quizAnswers:{}, fontScale:1 },
-  calView:"mes", finView:"mes", ordView:"mes",
+  data:{ tasks:[], tx:[], events:[], clients:[], brands:[], orders:[], fixed:[], focus:null, focusDate:null, quiz:null, quizAnswers:{}, fontScale:1 },
+  calView:"mes", finView:"mes", ordView:"mes", finOffset:0, ordOffset:0,
   cursor:new Date(),
   selected:keyOf(new Date()),
 
@@ -614,6 +645,7 @@ const app = {
     if(!Array.isArray(this.data.clients)) this.data.clients=[];
     if(!Array.isArray(this.data.orders)) this.data.orders=[];
     if(!Array.isArray(this.data.quizHistory)) this.data.quizHistory=[];
+    if(!Array.isArray(this.data.fixed)) this.data.fixed=[];
     if(!Array.isArray(this.data.brands)||!this.data.brands.length){
       this.data.brands=[
         {id:uid(),name:"Jorge Bischoff",pct:null,active:true},
@@ -1084,16 +1116,24 @@ const app = {
   finRange(){
     const now=new Date();
     if(this.finView==="semana"){
-      const s=new Date(now); s.setDate(now.getDate()-now.getDay()); s.setHours(0,0,0,0);
+      const s=new Date(now); s.setDate(now.getDate()-now.getDay()+7*this.finOffset); s.setHours(0,0,0,0);
       const e=new Date(s); e.setDate(s.getDate()+6);
-      return {start:s,end:e,label:"Saldo da semana"};
+      const fmt=d=>d.toLocaleDateString("pt-BR",{day:"numeric",month:"short"});
+      let nome = this.finOffset===0?"Esta semana":(this.finOffset===-1?"Semana passada":fmt(s)+" – "+fmt(e));
+      return {start:s,end:e,label:this.finOffset===0?"Saldo da semana":"Saldo de "+fmt(s)+" a "+fmt(e),periodo:nome};
     }
-    const s=new Date(now.getFullYear(),now.getMonth(),1);
-    const e=new Date(now.getFullYear(),now.getMonth()+1,0);
-    return {start:s,end:e,label:"Saldo do mês"};
+    const s=new Date(now.getFullYear(),now.getMonth()+this.finOffset,1);
+    const e=new Date(s.getFullYear(),s.getMonth()+1,0);
+    const mes=s.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+    return {start:s,end:e,label:this.finOffset===0?"Saldo do mês":"Saldo de "+mes,periodo:this.finOffset===0?"Este mês":mes};
+  },
+  moveFin(n){
+    this.finOffset = n===0 ? 0 : this.finOffset+n;
+    if(this.finOffset>0) this.finOffset=0;
+    this.renderFinance();
   },
   renderFinance(){
-    const {start,end,label}=this.finRange();
+    const {start,end,label,periodo}=this.finRange();
     const sk=keyOf(start), ek=keyOf(end);
     const inRange=this.data.tx.filter(t=>t.date>=sk&&t.date<=ek);
     let inc=0,out=0;
@@ -1102,10 +1142,129 @@ const app = {
     $("#bal-v").textContent=money(inc-out);
     $("#bal-in").textContent=money(inc);
     $("#bal-out").textContent=money(out);
+    const pl=$("#fin-period");
+    if(pl){ pl.textContent=periodo; pl.classList.toggle("hoje",this.finOffset===0); }
+    this.renderScope(inRange);
+    this.renderFixed(start);
     this.renderBars(start,end);
     this.renderBrands(inRange);
     this.renderCats(inRange,out);
-    this.renderTx();
+    this.renderTx(sk,ek);
+  },
+  renderScope(list){
+    const box=$("#fin-scope"); if(!box)return;
+    const outs=list.filter(t=>t.type==="out");
+    if(!outs.length){ box.innerHTML='<div class="empty-note">Nenhum gasto neste período.</div>'; return; }
+    const g={trabalho:0,pessoal:0,sem:0};
+    outs.forEach(t=>{ const sc=t.scope; if(sc==="trabalho")g.trabalho+=t.val; else if(sc==="pessoal")g.pessoal+=t.val; else g.sem+=t.val; });
+    const total=g.trabalho+g.pessoal+g.sem||1;
+    const linha=(ico,cor,nome,val)=>val<=0?"":`
+      <div class="scope-row">
+        <div class="scope-ico" style="background:${cor}">${ico}</div>
+        <div class="pilar-info">
+          <div class="pilar-name">${nome}</div>
+          <div class="pilar-bar"><span style="width:${(val/total)*100}%;background:var(--rose)"></span></div>
+        </div>
+        <div class="cat-val">${moneyShort(val)}<div class="action-desc" style="margin-top:3px;text-align:right">${Math.round((val/total)*100)}%</div></div>
+      </div>`;
+    box.innerHTML = linha("💼","var(--blue-soft)","Trabalho",g.trabalho)
+      + linha("🏠","var(--amber-soft)","Pessoal",g.pessoal)
+      + linha("?","var(--line)","Sem classificação",g.sem)
+      + (g.sem>0?'<div class="hint">Movimentações antigas ficam sem classificação. Toque nelas na lista abaixo para editar.</div>':'');
+  },
+  renderFixed(start){
+    const box=$("#fin-fixed"), lb=$("#fixed-label");
+    if(!box)return;
+    if(this.finView!=="mes"){ box.innerHTML=""; if(lb) lb.style.display="none"; return; }
+    if(lb) lb.style.display="";
+    const mes=keyOf(start).slice(0,7);
+    const ativas=this.data.fixed.filter(f=>f.active!==false);
+    if(!ativas.length){
+      box.innerHTML=`<div class="empty-note">Nenhuma despesa fixa cadastrada.<br>Cadastre aluguel, internet, financiamento — o app passa a mostrar quanto ainda vai sair no mês.</div>
+        <button class="ghost-btn" onclick="app.openFixedSheet()">Cadastrar despesa fixa</button>`;
+      return;
+    }
+    let pago=0,falta=0;
+    const linhas=ativas.map(f=>{
+      const lanc=this.data.tx.some(t=>t.fixedId===f.id&&(t.date||"").slice(0,7)===mes);
+      if(lanc) pago+=f.val; else falta+=f.val;
+      return `<div class="fix-row ${lanc?'pago':''}">
+        <div class="fix-body">
+          <div class="fix-name">${this.esc(f.name)}</div>
+          <div class="action-desc">dia ${f.day||1} · ${f.scope==="pessoal"?"pessoal":"trabalho"}</div>
+        </div>
+        <div class="fix-val">${moneyShort(f.val)}</div>
+        ${lanc?'<span class="pill g">pago</span>'
+              :`<button class="lanc-btn" onclick="event.stopPropagation();app.launchFixed('${f.id}','${mes}')">lançar</button>`}
+      </div>`;
+    }).join("");
+    box.innerHTML=`<div class="card" style="margin-bottom:12px">
+        <div class="action-desc" style="margin:0">Ainda vai sair neste mês</div>
+        <div class="pilar-name" style="font-size:calc(26px * var(--fs));color:var(--rose);margin-top:4px">${money(falta)}</div>
+        <div class="hint" style="margin-top:8px">Já pago: ${money(pago)} · Total das fixas: ${money(pago+falta)}</div>
+      </div>${linhas}
+      <button class="ghost-btn" onclick="app.openFixedSheet()">Gerenciar despesas fixas</button>`;
+  },
+  launchFixed(id,mes){
+    const f=this.data.fixed.find(x=>x.id===id); if(!f)return;
+    const dia=Math.min(f.day||1,28);
+    const data=mes+"-"+pad(dia);
+    this.data.tx.unshift({id:uid(),type:"out",val:f.val,name:f.name,cat:f.cat||"fixa",
+      scope:f.scope||"trabalho",brand:"",fixedId:f.id,date:data});
+    this.render(); this.toast(f.name+" lançado.");
+  },
+  openFixedSheet(editId){
+    const f = editId ? this.data.fixed.find(x=>x.id===editId) : null;
+    this._fixId = editId||null;
+    this._fixScope = f?(f.scope||"trabalho"):"trabalho";
+    if(!editId && this.data.fixed.length){
+      this.openSheet(`<h2>Despesas fixas</h2>
+        <p class="sub">Contas que se repetem todo mês. O app usa isso para mostrar quanto ainda vai sair.</p>
+        ${this.data.fixed.map(x=>`<div class="fix-row" onclick="app.openFixedSheet('${x.id}')">
+          <div class="fix-body"><div class="fix-name">${this.esc(x.name)}</div>
+          <div class="action-desc">dia ${x.day||1} · ${x.scope==="pessoal"?"pessoal":"trabalho"}${x.active===false?" · desativada":""}</div></div>
+          <div class="fix-val">${moneyShort(x.val)}</div><div class="action-arrow">›</div></div>`).join("")}
+        <button class="primary-btn" onclick="app.openFixedSheet('novo')">+ Nova despesa fixa</button>`);
+      return;
+    }
+    const ed = (editId&&editId!=="novo")?f:null;
+    if(editId==="novo"){ this._fixId=null; }
+    this.openSheet(`<h2>${ed?"Editar despesa fixa":"Nova despesa fixa"}</h2>
+      <div class="field"><label>O que é</label>
+        <input id="f-name" placeholder="Ex: aluguel, internet, financiamento do carro" value="${ed?this.esc(ed.name):''}"></div>
+      <div class="field-row">
+        <div class="field"><label>Valor</label>
+          <input id="f-val" type="number" inputmode="decimal" placeholder="0,00" value="${ed?ed.val:''}"></div>
+        <div class="field"><label>Dia do mês</label>
+          <input id="f-day" type="number" inputmode="numeric" min="1" max="28" placeholder="10" value="${ed?(ed.day||1):''}"></div>
+      </div>
+      <div class="field"><label>É gasto de quê?</label>
+        <div class="seg" id="f-seg">
+          <button onclick="app.setFixScope('trabalho',this)" class="${this._fixScope==='trabalho'?'on':''}">💼 Trabalho</button>
+          <button onclick="app.setFixScope('pessoal',this)" class="${this._fixScope==='pessoal'?'on':''}">🏠 Pessoal</button>
+        </div></div>
+      <button class="primary-btn" onclick="app.saveFixed()">${ed?"Salvar":"Cadastrar"}</button>
+      ${ed?'<button class="ghost-btn" onclick="app.deleteFixed(\''+ed.id+'\')">Excluir</button>':''}`);
+  },
+  setFixScope(v,btn){
+    this._fixScope=v;
+    document.querySelectorAll("#f-seg button").forEach(x=>x.classList.remove("on"));
+    btn.classList.add("on");
+  },
+  saveFixed(){
+    const name=($("#f-name").value||"").trim();
+    const val=parseFloat(($("#f-val").value||"0").replace(",","."));
+    if(!name){ this.toast("Escreva o que é."); return; }
+    if(!val||val<=0){ this.toast("Coloque um valor válido."); return; }
+    let day=parseInt($("#f-day").value||"1",10); if(isNaN(day)||day<1) day=1; if(day>28) day=28;
+    const obj={name,val,day,scope:this._fixScope,active:true};
+    if(this._fixId){ Object.assign(this.data.fixed.find(x=>x.id===this._fixId),obj); }
+    else { this.data.fixed.push({id:uid(),...obj}); }
+    this.closeSheet(); this.render(); this.toast("Despesa fixa salva.");
+  },
+  deleteFixed(id){
+    this.data.fixed=this.data.fixed.filter(f=>f.id!==id);
+    this.closeSheet(); this.render(); this.toast("Despesa fixa excluída.");
   },
   renderBrands(list){
     const box=$("#fin-brands"); if(!box)return;
@@ -1176,16 +1335,18 @@ const app = {
         <div class="cat-val">${moneyShort(v)}</div>
       </div>`).join("");
   },
-  renderTx(){
+  renderTx(sk,ek){
     const box=$("#tx-list");
-    if(!this.data.tx.length){ box.innerHTML='<div class="empty-note">Nenhuma movimentação ainda.<br>Toque no + pra registrar o que entrou ou saiu.</div>'; return; }
-    const sorted=[...this.data.tx].sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id)).slice(0,40);
+    let base=this.data.tx;
+    if(sk&&ek) base=base.filter(t=>t.date>=sk&&t.date<=ek);
+    if(!base.length){ box.innerHTML='<div class="empty-note">Nenhuma movimentação neste período.<br>Toque no + pra registrar o que entrou ou saiu.</div>'; return; }
+    const sorted=[...base].sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id)).slice(0,60);
     box.innerHTML=sorted.map(t=>{
       const p=(t.date||"").split("-");
       return `<div class="tx" onclick="app.deleteTxAsk('${t.id}')">
         <div class="tx-ico ${t.type}">${t.type==="in"?"↓":"↑"}</div>
         <div class="tx-body"><div class="tx-name">${this.esc(t.name)}</div>
-        <div class="tx-cat">${this.esc(t.cat)||"—"} · ${p[2]}/${p[1]}</div></div>
+        <div class="tx-cat">${t.type==="out"?(t.scope==="pessoal"?"🏠 ":(t.scope==="trabalho"?"💼 ":"")):""}${this.esc(t.cat)||"—"} · ${p[2]}/${p[1]}</div></div>
         <div class="tx-val ${t.type}">${t.type==="in"?"+":"−"}${money(t.val)}</div>
       </div>`;}).join("");
   },
@@ -1193,15 +1354,23 @@ const app = {
     const t=this.data.tx.find(x=>x.id===id); if(!t)return;
     this.openSheet(`<h2>${this.esc(t.name)}</h2>
       <p class="sub">${t.type==="in"?"Entrada":"Saída"} de ${money(t.val)}${t.cat?" · "+this.esc(t.cat):""}</p>
-      <button class="ghost-btn" onclick="app.deleteTx('${id}')">Excluir movimentação</button>
-      <button class="ghost-btn" onclick="app.closeSheet()">Cancelar</button>`);
+      ${t.type==="out"?`<div class="field"><label>Classificar como</label>
+        <div class="seg">
+          <button class="${t.scope==='trabalho'?'on':''}" onclick="app.reclass('${id}','trabalho')">💼 Trabalho</button>
+          <button class="${t.scope==='pessoal'?'on':''}" onclick="app.reclass('${id}','pessoal')">🏠 Pessoal</button>
+        </div></div>`:''}
+      <button class="ghost-btn" onclick="app.deleteTx('${id}')">Excluir movimentação</button>`);
+  },
+  reclass(id,sc){
+    const t=this.data.tx.find(x=>x.id===id); if(!t)return;
+    t.scope=sc; this.closeSheet(); this.render(); this.toast("Classificado como "+sc+".");
   },
   deleteTx(id){
     this.data.tx=this.data.tx.filter(t=>t.id!==id);
     this.closeSheet(); this.render(); this.toast("Movimentação excluída.");
   },
   openTxSheet(){
-    this._txType="out";
+    this._txType="out"; this._txScope="trabalho";
     this.openSheet(`<h2>Nova movimentação</h2>
       <div class="field"><label>Entrou ou saiu?</label>
         <div class="seg io" id="io-seg">
@@ -1210,7 +1379,12 @@ const app = {
         </div></div>
       <div class="field"><label>Valor</label><input id="tx-val" type="number" inputmode="decimal" placeholder="0,00"></div>
       <div class="field"><label>Descrição</label><input id="tx-name" placeholder="Ex: comissão, combustível"></div>
-      <div class="field"><label>Categoria</label><input id="tx-cat" placeholder="Ex: trabalho, alimentação, carro"></div>
+      <div class="field" id="scope-field"><label>É gasto de quê?</label>
+        <div class="seg" id="sc-seg">
+          <button onclick="app.setTxScope('trabalho',this)" class="on">💼 Trabalho</button>
+          <button onclick="app.setTxScope('pessoal',this)">🏠 Pessoal</button>
+        </div></div>
+      <div class="field"><label>Categoria</label><input id="tx-cat" placeholder="Ex: combustível, alimentação, carro"></div>
       <div class="field" id="brand-field"><label>Marca (para comissões)</label>
         <input id="tx-brand" placeholder="Ex: Jorge Bischoff" list="brand-list">
         ${this.brandDatalist()}</div>
@@ -1223,6 +1397,12 @@ const app = {
     document.querySelectorAll("#io-seg button").forEach(x=>x.classList.remove("on"));
     b.classList.add("on"); this._txType=b.dataset.t;
     const bf=$("#brand-field"); if(bf) bf.style.display=this._txType==="in"?"block":"none";
+    const sf=$("#scope-field"); if(sf) sf.style.display=this._txType==="out"?"block":"none";
+  },
+  setTxScope(v,btn){
+    this._txScope=v;
+    document.querySelectorAll("#sc-seg button").forEach(x=>x.classList.remove("on"));
+    btn.classList.add("on");
   },
   saveTx(){
     const val=parseFloat(($("#tx-val").value||"").replace(",","."));
@@ -1231,6 +1411,7 @@ const app = {
     if(!name){ this.toast("Escreva uma descrição."); return; }
     this.data.tx.unshift({id:uid(),type:this._txType,val,name,
       cat:($("#tx-cat").value||"").trim(),
+      scope:this._txType==="out"?(this._txScope||"trabalho"):"",
       brand:this._txType==="in"?($("#tx-brand").value||"").trim():"",
       date:$("#tx-date").value||keyOf(new Date())});
     this.closeSheet(); this.go("money");
@@ -1293,7 +1474,7 @@ const app = {
   },
   confirmImport(){
     const d=this._pendingImport; if(!d)return;
-    this.data=Object.assign({tasks:[],tx:[],events:[],clients:[],brands:[],orders:[],quizHistory:[],focus:null,focusDate:null,quiz:null,quizAnswers:{},fontScale:1},d);
+    this.data=Object.assign({tasks:[],tx:[],events:[],clients:[],brands:[],orders:[],quizHistory:[],fixed:[],focus:null,focusDate:null,quiz:null,quizAnswers:{},fontScale:1},d);
     this._pendingImport=null;
     document.documentElement.style.setProperty("--fs",this.data.fontScale||1);
     this.save(); this.closeSheet(); this.go("home"); this.toast("Dados restaurados.");
@@ -1380,18 +1561,45 @@ const app = {
 
   /* ================= PEDIDOS ================= */
   setOrdView(v){
-    this.ordView=v;
-    const a=$("#ow-mes"), b=$("#ow-tudo");
-    if(a) a.classList.toggle("on",v==="mes");
-    if(b) b.classList.toggle("on",v==="tudo");
+    this.ordView=v; this.ordOffset=0;
+    ["semana","mes","tudo"].forEach(k=>{
+      const b=$("#ow-"+k); if(b) b.classList.toggle("on",v===k);
+    });
+    const nav=$("#ord-nav"); if(nav) nav.style.display=(v==="tudo")?"none":"flex";
     this.renderOrders();
+  },
+  moveOrd(n){
+    this.ordOffset = n===0 ? 0 : this.ordOffset+n;
+    if(this.ordOffset>0) this.ordOffset=0;
+    this.renderOrders();
+  },
+  ordRange(){
+    const now=new Date();
+    if(this.ordView==="semana"){
+      const s=new Date(now); s.setDate(now.getDate()-now.getDay()+7*this.ordOffset); s.setHours(0,0,0,0);
+      const e=new Date(s); e.setDate(s.getDate()+6);
+      const fmt=d=>d.toLocaleDateString("pt-BR",{day:"numeric",month:"short"});
+      const nome=this.ordOffset===0?"Esta semana":(this.ordOffset===-1?"Semana passada":fmt(s)+" – "+fmt(e));
+      return {start:s,end:e,periodo:nome,titulo:this.ordOffset===0?"Pedidos desta semana":"Pedidos de "+fmt(s)+" a "+fmt(e)};
+    }
+    const s=new Date(now.getFullYear(),now.getMonth()+this.ordOffset,1);
+    const e=new Date(s.getFullYear(),s.getMonth()+1,0);
+    const mes=s.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+    return {start:s,end:e,periodo:this.ordOffset===0?"Este mês":mes,titulo:this.ordOffset===0?"Pedidos deste mês":"Pedidos de "+mes};
   },
   ordersInView(){
     if(this.ordView==="tudo") return [...this.data.orders];
-    const m=keyOf(new Date()).slice(0,7);
-    return this.data.orders.filter(o=>(o.date||"").slice(0,7)===m);
+    const {start,end}=this.ordRange();
+    const sk=keyOf(start), ek=keyOf(end);
+    return this.data.orders.filter(o=>(o.date||"")>=sk&&(o.date||"")<=ek);
   },
   renderOrders(){
+    const pl=$("#ord-period");
+    if(pl){
+      if(this.ordView==="tudo"){ pl.textContent="Todos os pedidos"; }
+      else { pl.textContent=this.ordRange().periodo; pl.classList.toggle("hoje",this.ordOffset===0); }
+    }
+    const nav=$("#ord-nav"); if(nav) nav.style.display=(this.ordView==="tudo")?"none":"flex";
     const list=this.ordersInView().sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id));
     const sum=$("#ord-summary");
     if(sum){
@@ -1403,7 +1611,7 @@ const app = {
         if(b&&b.pct){ com+=(o.value||0)*b.pct/100; temPct=true; }
       });
       sum.innerHTML=`<div class="card bal">
-          <div class="bal-k">${this.ordView==="tudo"?"Total de pedidos":"Pedidos deste mês"}</div>
+          <div class="bal-k">${this.ordView==="tudo"?"Total de pedidos":this.ordRange().titulo}</div>
           <div class="bal-v">${money(valor)}</div>
           <div class="bal-split">
             <div><div class="k">Pares</div><div class="v">${pares}</div></div>
@@ -1418,7 +1626,7 @@ const app = {
     }
     const box=$("#order-list"); if(!box)return;
     if(!list.length){
-      box.innerHTML=`<div class="empty-note">${this.ordView==="mes"?"Nenhum pedido neste mês.":"Nenhum pedido registrado."}<br>Toque no + para registrar um pedido.</div>`;
+      box.innerHTML=`<div class="empty-note">${this.ordView==="tudo"?"Nenhum pedido registrado.":"Nenhum pedido neste período."}<br>Toque no + para registrar um pedido.</div>`;
       return;
     }
     box.innerHTML=list.map(o=>{
@@ -1785,6 +1993,7 @@ const app = {
     });
     if(this.data.quiz&&this.data.quiz.scores){
       if(!Array.isArray(this.data.quizHistory)) this.data.quizHistory=[];
+    if(!Array.isArray(this.data.fixed)) this.data.fixed=[];
       this.data.quizHistory.push(this.data.quiz);
       if(this.data.quizHistory.length>12) this.data.quizHistory.shift();
     }
